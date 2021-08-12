@@ -22,6 +22,7 @@ from sqlalchemy import create_engine
 import jieba
 import jieba.analyse
 from pymongo import MongoClient
+import mysql.connector
 
 # Global variable
 mongodb_atlas_account = "adan7575"
@@ -165,11 +166,11 @@ def afa_news(page_tmp):
 
     #將link中的article_id當成存進資料庫後的唯一識別
     ID = list(map(lambda x: x.split('&article_id=')[1], link))    
-    print('ID=', ID)
+   # print('ID=', ID)
 
     # 透過個連結逐一訪問子頁面
     for j in range(len(link)):
-        print('進入子新聞頁面', j+1)
+        # print('進入子新聞頁面', j+1)
         res_sub = ss.get(url=link[j], headers=headers)
         sub_soup_main = BeautifulSoup(res_sub.text, 'html.parser')
 
@@ -211,7 +212,7 @@ def afa_news(page_tmp):
     print("afa_news update to mongodb -> start")
     # 判斷id是否存在於mongodb中，若無則寫進資料庫
     for excist_id in df_afa_news['afa_id']:
-        print(excist_id)
+        # print(excist_id)
         if [x for x in afa_news.find({"afa_id":int(excist_id)})] == []:
             afa_news_update = df_afa_news.loc[df_afa_news["afa_id"]==excist_id].to_dict(orient='records')
             updated = afa_news.insert_one(afa_news_update[0]).inserted_id
@@ -364,6 +365,46 @@ def coa_news(start_year_tmp, start_month_tmp, end_year_tmp, end_month_tmp):
 
     return
 
+def news_merge():
+    print('news merge -> start')
+    client = MongoClient('mongodb+srv://{}:{}@twfruit.i2omj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority'.format(mongodb_atlas_account, mongodb_atlas_password))
+    db = client.TWFruits # connect database TWFruits
+
+    # 分別讀取afa_news和coa_news並轉換成dataframe進行讀取
+    # connect collection afa_news
+    afa_news = db.afa_news
+    df_afa = pd.DataFrame(list(afa_news.find()))
+
+    # connect collection coa_news
+    coa_news = db.coa_news
+    df_coa = pd.DataFrame(list(coa_news.find()))
+
+    df_coa = df_coa[['coa_id', 'date', 'title', 'content', 'link']]
+    df_coa = df_coa.rename(columns={'coa_id': 'news_id'})
+
+    df_afa = df_afa[['afa_id', 'date', 'title', 'content', 'link']]
+    df_afa = df_afa.rename(columns={'afa_id': 'news_id'})
+
+    df_news = pd.concat([df_afa, df_coa])
+    df_news = df_news.drop_duplicates(subset=['title', 'date'])
+
+    news = db.news
+
+    for excist_id in df_news['news_id']:
+        if [x for x in news.find({"news_id":int(excist_id)})] == []:
+            news_update = df_news.loc[df_news["news_id"]==excist_id].to_dict(orient='records')
+            print(news_update)
+            updated = news.insert_one(news_update[0]).inserted_id
+            print("news update id ", updated)
+
+    # 全部更新
+    # news_data_update = df_news.to_dict(orient='records')
+    # news_data
+    # out = news_data.insert_many(news_data_update)
+    # print('news_data update id =', out)
+    client.close()
+    print('news merge -> finish')
+    return
 
 def marketing_price_soup(fruit_name, table_content_tmp):
 
@@ -395,7 +436,7 @@ def marketing_price_soup(fruit_name, table_content_tmp):
 #     df3.to_csv("farmproduct_{}_crawler.csv".format(fruit_name), index=False)
 #     print(df3.dtypes)
 #     print(df3)
-    print("marketing_price update to mongodb -> start")
+#    print("marketing_price update to mongodb -> start")
     # 寫進mongodb
 #     client = MongoClient('mongodb+srv://{}:{}@twfruit.i2omj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority'.format(mongodb_atlas_account, mongodb_atlas_password))
 #     db = client.TWFruits
@@ -446,9 +487,11 @@ def marketing_price(fruit, start_date):
 
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-#     driver = webdriver.Chrome(options=chrome_options)
 
-    driver = Chrome("./chromedriver")
+#    driver = webdriver.Chrome(options=chrome_options, executable_path='~/home/adan7575/crawler/chromedriver')
+    driver = webdriver.Chrome(options=chrome_options, executable_path='./chromedriver')
+
+    # driver = Chrome("./chromedriver")
     driver.get(url)
 
     #### 1. 選取範圍 => 期間
@@ -506,6 +549,59 @@ def marketing_price(fruit, start_date):
     marketing_price_soup(fruit, table_content)
     return 
 
+def weather_predict():
+    print('weather predicr crawler start')
+    # 授權碼
+    authorization = 'CWB-60FC0788-DF06-4574-9E72-874260AC7B12'
+
+    # 麟洛、燕巢、中寮、員林(按順序)
+    location_name = ['%E9%BA%9F%E6%B4%9B%E9%84%89', '%E7%87%95%E5%B7%A2%E5%8D%80', '%E4%B8%AD%E5%AF%AE%E9%84%89', '%E5%93%A1%E6%9E%97%E5%B8%82']
+    codename = ['F-D0047-035', 'F-D0047-067', 'F-D0047-023', 'F-D0047-019']
+
+    mydb = mysql.connector.connect(host='35.194.136.165',user=mysql_username,password=mysql_password,database=database)
+
+    engine = create_engine("mysql+pymysql://{}:{}@{}/{}".format(mysql_username, mysql_password, host_port, database))
+    con = engine.connect()
+
+    for i in range(4):
+        url = f'https://opendata.cwb.gov.tw/api/v1/rest/datastore/{codename[i]}?Authorization={authorization}&format=JSON&locationName={location_name[i]}'
+        ss = requests.session()
+        res = ss.get(url=url)
+        time.sleep(3)
+        j = json.loads(res.text)
+        records = j['records']['locations'][0]['location'][0]
+        location = records['locationName']
+        col=['start_time', 'end_time', 'rain_probability(%)', 'temperature_avg',
+             'lowest_temperature', 'maximum_temperature', 'humidity(%)', 'weather']
+        data = []
+        location = records['locationName']
+        print(f'{location} weather predict')
+        for i in range(len(records['weatherElement'][0]['time'])):
+            start_time=records['weatherElement'][0]['time'][i]['startTime']
+            end_time=records['weatherElement'][0]['time'][i]['endTime']
+            rain=records['weatherElement'][0]['time'][i]['elementValue'][0]['value']
+            if rain ==' ':
+                rain = 'NaN'
+            temp=records['weatherElement'][1]['time'][i]['elementValue'][0]['value']
+            humidity=records['weatherElement'][2]['time'][i]['elementValue'][0]['value']
+            weather=records['weatherElement'][6]['time'][i]['elementValue'][0]['value']
+            low_temp=records['weatherElement'][8]['time'][i]['elementValue'][0]['value']
+            high_temp=records['weatherElement'][12]['time'][i]['elementValue'][0]['value']
+            data.append([start_time, end_time, rain, temp, low_temp, high_temp, humidity, weather])
+        df=pd.DataFrame(data=data, columns=col)
+        target_cols = ['temperature_avg', 'lowest_temperature', 'maximum_temperature', 'humidity(%)']
+        df[target_cols] = df[target_cols].apply(pd.to_numeric)
+        # print(df.dtypes)
+        # print(df)
+        print('update to mysql')
+        cursor = mydb.cursor()
+        sql = f"DROP TABLE IF EXISTS weather_predict_{location}"
+        cursor.execute(sql)
+        df.to_sql(name=f'weather_predict_{location}', con=con, if_exists='append', index=False)
+    cursor.close()
+    con.close()
+    print('weather predict crawler finish')
+    return
 
 def wether_today():
     col = ['ObsTime', 'StnPres', 'SeaPres', 'StnPresMax', 'StnPresMaxTime','StnPresMin',
@@ -628,9 +724,11 @@ coa_news(NowYear, NowMonth-1, NowYear, NowMonth)
 # 新聞 (總爬取頁數)
 afa_news(2) 
 
+news_merge()
+
 # 氣象資料(開始年分)
 # wether_today()
 
-
+weather_predict()
 
 
