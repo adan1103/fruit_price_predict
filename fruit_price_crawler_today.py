@@ -25,13 +25,13 @@ from pymongo import MongoClient
 import mysql.connector
 
 # Global variable
-mongodb_atlas_account = "adan7575"
-mongodb_atlas_password = "adan7575"
+mongodb_atlas_account = "account"
+mongodb_atlas_password = "password"
 
-mysql_username = 'cfb101spade'
-mysql_password = 'jo3m4284gj4rm4'
-host_port = '34.81.77.216:3306'
-database = 'twfruits'
+mysql_username = 'username'
+mysql_password = 'password'
+host_port = 'host_ip:host_pott'
+database = 'database_name'
 
 engine = create_engine("mysql+pymysql://{}:{}@{}/{}".format(mysql_username, mysql_password, host_port, database))
 con = engine.connect()
@@ -137,6 +137,14 @@ def afa_news(page_tmp):
                     re.sub('-','/',post_date)]
         return tmp_list[0], tmp_list[1], tmp_list[2]
 
+    def get_sub_link(urls):
+        sub_link=[]
+        res = requests.session().get(url=urls, headers=headers)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        for i in range(0, len(soup.select('a[class="article_class"]'))):
+            sub_link.append(soup.select('a[class="article_class"]')[i]['href'])
+        return sub_link
+
     url = []
     link = []
     out = []
@@ -151,22 +159,19 @@ def afa_news(page_tmp):
 
     # 從主頁面get request並用BeautifulSoup轉換成html，用開發工具發現子頁面的連結在a標籤的'article_class'屬性中
     # 存取該標籤的'href'，並存到link中
-    for page in range(len(url)):
-        print('page=', page+1)
-        res = ss.get(url=url[page], headers=headers)
-        soup = BeautifulSoup(res.text, 'html.parser')
 
-        # 對照圖(一)農業新聞主頁面的開發者工具
-        # 把要爬的所有子頁面的連結都先存起來
-        for i in range(0, len(soup.select('a[class="article_class"]'))):
-            link.append(soup.select('a[class="article_class"]')[i]['href'])
-            res_sub = ss.get(url=link[i], headers=headers)
-            soup_sub = BeautifulSoup(res_sub.text, 'html.parser')        
-#     print('link=', link)
+    # 同時建立及啟用10個執行緒
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(get_sub_link, url)
 
+    link_tmp = [i for i in results]  
     #將link中的article_id當成存進資料庫後的唯一識別
-    ID = list(map(lambda x: x.split('&article_id=')[1], link))    
-   # print('ID=', ID)
+    link = []
+
+    for i in range(len(link_tmp)):
+        for j in link_tmp[i]:
+            link.append(j)
+    ID = list(map(lambda x: x.split('&article_id=')[1], link))  
 
     # 透過個連結逐一訪問子頁面
     for j in range(len(link)):
