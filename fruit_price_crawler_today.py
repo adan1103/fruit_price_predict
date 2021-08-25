@@ -28,9 +28,9 @@ import mysql.connector
 mongodb_atlas_account = "adan7575"
 mongodb_atlas_password = "adan7575"
 
-mysql_username = 'adan'
-mysql_password = 'adan'
-host_port = '35.194.136.165:3306'
+mysql_username = 'cfb101spade'
+mysql_password = 'jo3m4284gj4rm4'
+host_port = '34.81.77.216:3306'
 database = 'twfruits'
 
 engine = create_engine("mysql+pymysql://{}:{}@{}/{}".format(mysql_username, mysql_password, host_port, database))
@@ -550,34 +550,37 @@ def marketing_price(fruit, start_date):
     return 
 
 def weather_predict():
-    print('weather predicr crawler start')
-    # 授權碼
+
+    # 授權碼 
     authorization = 'CWB-60FC0788-DF06-4574-9E72-874260AC7B12'
 
     # 麟洛、燕巢、中寮、員林(按順序)
     location_name = ['%E9%BA%9F%E6%B4%9B%E9%84%89', '%E7%87%95%E5%B7%A2%E5%8D%80', '%E4%B8%AD%E5%AF%AE%E9%84%89', '%E5%93%A1%E6%9E%97%E5%B8%82']
     codename = ['F-D0047-035', 'F-D0047-067', 'F-D0047-023', 'F-D0047-019']
 
-    mydb = mysql.connector.connect(host='35.194.136.165',user=mysql_username,password=mysql_password,database=database)
+    # mydb = pymysql.connect(host='34.81.77.216',post=3306,user=mysql_username,password=mysql_password,db=database,charset="utf8")
+
 
     engine = create_engine("mysql+pymysql://{}:{}@{}/{}".format(mysql_username, mysql_password, host_port, database))
     con = engine.connect()
 
-    for i in range(4):
+    for i in range(len(location_name)):
         url = f'https://opendata.cwb.gov.tw/api/v1/rest/datastore/{codename[i]}?Authorization={authorization}&format=JSON&locationName={location_name[i]}'
         ss = requests.session()
         res = ss.get(url=url)
-        time.sleep(3)
+        time.sleep(5)
         j = json.loads(res.text)
         records = j['records']['locations'][0]['location'][0]
+    #         print(records)
         location = records['locationName']
-        col=['start_time', 'end_time', 'rain_probability(%)', 'temperature_avg',
+        col=['start_time', 'end_time', 'rain_probability(%)', 'temperature_avg', 
              'lowest_temperature', 'maximum_temperature', 'humidity(%)', 'weather']
         data = []
         location = records['locationName']
-        print(f'{location} weather predict')
-        for i in range(len(records['weatherElement'][0]['time'])):
+        print('location=', location)
+        for i in range(len(records['weatherElement'][1]['time'])):
             start_time=records['weatherElement'][0]['time'][i]['startTime']
+    #             print(start_time)
             end_time=records['weatherElement'][0]['time'][i]['endTime']
             rain=records['weatherElement'][0]['time'][i]['elementValue'][0]['value']
             if rain ==' ':
@@ -591,43 +594,21 @@ def weather_predict():
         df=pd.DataFrame(data=data, columns=col)
         target_cols = ['temperature_avg', 'lowest_temperature', 'maximum_temperature', 'humidity(%)']
         df[target_cols] = df[target_cols].apply(pd.to_numeric)
-        # print(df.dtypes)
-        # print(df)
-        print('update to mysql')
-        cursor = mydb.cursor()
-        sql = f"DROP TABLE IF EXISTS weather_predict_{location}"
-        cursor.execute(sql)
-        df.to_sql(name=f'weather_predict_{location}', con=con, if_exists='append', index=False)
-    cursor.close()
+        print(df)
+        df.to_sql(name=f'weather_predict_{location}', con=con, if_exists='replace', index=False)
     con.close()
-    print('weather predict crawler finish')
     return
 
 def wether_today():
-    col = ['ObsTime', 'StnPres', 'SeaPres', 'StnPresMax', 'StnPresMaxTime','StnPresMin',
-           'StnPresMinTime', 'Temperature', 'TMax', 'TMaxTime', 'TMin', 'TMinTime',
-           'Td dew point', 'RH', 'RHMin', 'RHMinTime', 'WS', 'WD', 'WSGust','WDGust',
-           'WGustTime', 'Precp', 'PrecpHour', 'PrecpMax10', 'PrecpMax10Time', 'PrecpMax60',
-           'PrecpMax60Time', 'SunShine', 'SunShineRate', 'GloblRad', 'VisbMean',
-           'EvapA', 'UVIMax', 'UVIMaxTime', 'CloudAmount']
-
-    resource_path = r'./WeatherDatas'
-    if not os.path.exists(resource_path):
-        os.mkdir(resource_path)
+    engine = create_engine("mysql+pymysql://{}:{}@{}/{}".format(mysql_username, mysql_password, host_port, database))
+    con = engine.connect()
 
     today = datetime.datetime.now()
     NowYear = today.year
     NowMonth = today.month
     NowDay = today.day
 
-    client = MongoClient('mongodb+srv://{}:{}@twfruit.i2omj.mongodb.net/myFirstDatabase?retryWrites=true&w=majority'.format(mongodb_atlas_account, mongodb_atlas_password))
-    db = client.TWFruits
-    weather_data = db.climate_weather
-
-    if len(str(NowMonth)) == 1:
-        Month = "0" + str(NowMonth)
-    else:
-        Month = NowMonth
+    Month = date_to_str(NowMonth)
 
     Error = []
     with open('./現存測站.csv',encoding='utf-8') as csvfile:
@@ -635,6 +616,13 @@ def wether_today():
         column = [row for row in reader]
 
     for i in range(0,len(column)):
+        col = ['ObsTime', 'StnPres', 'SeaPres', 'StnPresMax', 'StnPresMaxTime','StnPresMin',
+           'StnPresMinTime', 'Temperature', 'TMax', 'TMaxTime', 'TMin', 'TMinTime',
+           'Td dew point', 'RH', 'RHMin', 'RHMinTime', 'WS', 'WD', 'WSGust','WDGust',
+           'WGustTime', 'Precp', 'PrecpHour', 'PrecpMax10', 'PrecpMax10Time', 'PrecpMax60',
+           'PrecpMax60Time', 'SunShine', 'SunShineRate', 'GloblRad', 'VisbMean',
+           'EvapA', 'UVIMax', 'UVIMaxTime', 'CloudAmount']
+
         StationNumber = column[i]['站號']
         StationName = column[i]['站名']
         StationLocation = column[i]['城市']
@@ -661,49 +649,32 @@ def wether_today():
             for t in range(len(rowList_org)): # 天數
                 rowList_t = list(map(lambda x: rowList_org[t][x].split('\xa0')[0], range(len(rowList_org[0])))) # 該天所有欄位
                 rowList.append(rowList_t)
-
-            resource_path2 = r'{}/{}'.format(resource_path, StationLocation)
-            if not os.path.exists(resource_path2):
-                os.mkdir(resource_path2)
-            resource_path3 = r'{}/{}'.format(resource_path2, StationName)
-            if not os.path.exists(resource_path3):
-                os.mkdir(resource_path3)
-
-            try:
-                df = pd.DataFrame(rowList,
-                                  columns=col)
-
-                df.to_csv(
-                    r'%s/%s.csv' % (resource_path3, StationName + "{}{}".format(NowYear, Month)),
-                    index=False)
-                print('OK: {}/{}'.format(NowYear, Month))
-                data = rowList.insert(0, col)
-                weather_data_update = {"year":NowYear, "month":int(Month) ,"station": StationName, "data":data}
-                # 依年分、測站名稱、觀測要素尋找是否存在mongodb，若無則新增進mongodb
-                if [x for x in weather_data.find({"year":NowYear, "month":int(Month), "station": StationName})] == []:
-                    updated = weather_data.insert(weather_data_update)
-                    print("weather_data update id ", updated)
-                else:
-                    print("data exist -> no need to update")
-                print("weather_data update to mongodb -> finish")
-                time.sleep(1)
-
-            except ValueError as e:
-                print("ValueError:", url)
-                Error.append(url)
-            except IndexError as e:
-                print("IndexError:", url)
-                Error.append(url)
-
+    #         try:
+            df = pd.DataFrame(rowList,
+                              columns=col)
+            # 去除非數值日期
+            df = df.drop(df.loc[(df['Temperature'].apply(lambda s: pd.to_numeric(s, errors='coerce')).notnull()==False)].index)
+            # 新增年、月欄位
+            df['Year'] = NowYear
+            df['Month'] = NowMonth
+            col.insert(0,'Month')
+            col.insert(0,'Year')
+            df = df[col]
+            df['ObsTime'] = df['ObsTime'].apply(pd.to_numeric)
+            df_read = pd.read_sql(f'weather_{StationName}', engine)
+    #         print('df_read=', df_read)
+            duplicate = pd.merge(df_read, df, how='inner')
+    #         print('duplicate=', duplicate)
+            for i in duplicate.index:
+                df = df.drop(df.loc[(df['Year']==duplicate['Year'][i]) & (df['Month']==duplicate['Month'][i])].index[0])
+            print('update = ',df)
+            df.to_sql(name=(f'weather_{StationName}'), con=con, if_exists='append', index=False)
+            time.sleep(1)
             print('Update {} is done'.format(StationName + "{}{}".format(NowYear, Month)))
             print("==========================")
-            time.sleep(2)
-    client.close() 
+            time.sleep(2) 
 
-    with open('{}/Error_DailyUpdate_{}{}.txt'.format(resource_path, NowMonth, NowDay), "w") as f:
-        for error in Error:
-            f.write('{}\n'.format(error))
-
+    return
 
 
 today = datetime.datetime.now()
@@ -727,7 +698,7 @@ afa_news(2)
 news_merge()
 
 # 氣象資料(開始年分)
-# wether_today()
+wether_today()
 
 weather_predict()
 
